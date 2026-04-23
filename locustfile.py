@@ -8,6 +8,7 @@ class DeviceStatsUser(HttpUser):
     def on_start(self):
         self.user_id = None
         self.device_ids = []
+        self.last_task_id = None
         
         response = self.client.post(
             "/users",
@@ -48,10 +49,12 @@ class DeviceStatsUser(HttpUser):
         if not self.device_ids:
             return
         device_id = random.choice(self.device_ids)
-        self.client.post(
+        response = self.client.post(
             f"/analytics/device/{device_id}",
             name="/analytics/device/{id} (all time)"
         )
+        if response.status_code == 200:
+            self.last_task_id = response.json().get("task_id")
     
     @task(2)
     def get_device_analytics_last_5_seconds(self):
@@ -60,19 +63,23 @@ class DeviceStatsUser(HttpUser):
         device_id = random.choice(self.device_ids)
         from_ts = (datetime.now() - timedelta(seconds=5)).isoformat()
         to_ts = datetime.now().isoformat()
-        self.client.post(
+        response = self.client.post(
             f"/analytics/device/{device_id}?from_ts={from_ts}&to_ts={to_ts}",
             name="/analytics/device/{id} (last 5 sec)"
         )
+        if response.status_code == 200:
+            self.last_task_id = response.json().get("task_id")
     
     @task(2)
     def get_user_analytics_all_time(self):
         if self.user_id is None:
             return
-        self.client.post(
+        response = self.client.post(
             f"/analytics/user/{self.user_id}",
             name="/analytics/user/{id} (all time)"
         )
+        if response.status_code == 200:
+            self.last_task_id = response.json().get("task_id")
     
     @task(1)
     def get_user_analytics_last_5_seconds(self):
@@ -80,7 +87,18 @@ class DeviceStatsUser(HttpUser):
             return
         from_ts = (datetime.now() - timedelta(seconds=5)).isoformat()
         to_ts = datetime.now().isoformat()
-        self.client.post(
+        response = self.client.post(
             f"/analytics/user/{self.user_id}?from_ts={from_ts}&to_ts={to_ts}",
             name="/analytics/user/{id} (last 5 sec)"
+        )
+        if response.status_code == 200:
+            self.last_task_id = response.json().get("task_id")
+    
+    @task(1)
+    def get_analytics_result(self):
+        if self.last_task_id is None:
+            return
+        self.client.get(
+            f"/analytics/result/{self.last_task_id}",
+            name="/analytics/result/{task_id}"
         )
